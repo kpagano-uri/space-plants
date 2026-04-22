@@ -16,23 +16,21 @@
 #     Q3. Do genotypes differ in the DIRECTION (up vs down) of DE genes?
 #
 # Statistical approach:
-#   - Counts (Q1) are compared with Fisher's exact test (pairwise) since we
-#     have presence/absence of DE status for each gene
-#   - Fold change magnitudes (Q2) are compared with Kruskal-Wallis test
-#     (non-parametric, appropriate for non-normal log2FC distributions)
-#     followed by Dunn's post-hoc pairwise tests
-#   - Directions (Q3) are compared with chi-square tests on contingency tables
+#   - Counts (Q1): Fisher's exact test (pairwise)
+#   - Fold change magnitudes (Q2): Kruskal-Wallis + pairwise Wilcoxon
+#   - Directions (Q3): Chi-square test on contingency tables
 #
 # Input:
 #   data/cleaned_de_long.csv
+#   data/cleaned_summary.csv
 #
 # Output:
-#   tables/01_fisher_results.csv     — pairwise DE gene count comparisons
-#   tables/02_kruskal_results.csv    — log2FC magnitude comparisons
-#   tables/03_dunn_results.csv       — post-hoc pairwise magnitude comparisons
-#   tables/04_chisq_results.csv      — up/down direction comparisons
-#   figures/05_log2fc_boxplots.png   — boxplots of fold change magnitude
-#   figures/06_sig_gene_heatmap.png  — heatmap of DE gene overlap
+#   tables/01_fisher_results.csv
+#   tables/02_kruskal_results.csv
+#   tables/03_dunn_results.csv
+#   tables/04_chisq_results.csv
+#   figures/05_log2fc_boxplots.png
+#   figures/06_overlap_heatmap.png
 #
 # Usage:
 #   Run from the project root in RStudio with the .Rproj open, or:
@@ -65,7 +63,7 @@ theme_space <- theme_minimal(base_size = 13) +
     legend.position = "bottom"
   )
 
-genotype_colors <- c("Col-0" = "dodgerblue", "WS" = "firebrick1", "phyD" = "seagreen1")
+genotype_colors <- c("Col-0" = "#2166ac", "WS" = "#d6604d", "phyD" = "#4dac26")
 
 # ── 1. Load data ──────────────────────────────────────────────────────────────
 
@@ -82,60 +80,38 @@ de_long <- read_csv(
 
 message("Loaded: ", nrow(de_long), " rows")
 
-# ── 2. Q1: Do genotypes differ in number of DE genes? ─────────────────────────
-# For each light condition, we compare the number of significantly DE genes
-# between genotype pairs using Fisher's exact test.
-# Each gene is either DE (significant) or not — a 2x2 contingency table
-# per pair tests whether the proportion of DE genes differs.
+# ── 2. Q1: Fisher's exact test — DE gene counts ───────────────────────────────
 
-message("\n--- Q1: Fisher's exact test — DE gene counts between genotypes ---")
+message("\n--- Q1: Fisher's exact test ---")
 
 run_fisher <- function(data, light_cond) {
-  # Filter to the light condition of interest
-  df <- data %>% filter(light_condition == light_cond)
-
+  df        <- data %>% filter(light_condition == light_cond)
   genotypes <- levels(df$genotype)
   pairs     <- combn(genotypes, 2, simplify = FALSE)
-
-  results <- map_dfr(pairs, function(pair) {
+  
+  map_dfr(pairs, function(pair) {
     g1 <- pair[1]; g2 <- pair[2]
-
-    # Count DE and non-DE genes for each genotype
     counts <- df %>%
       filter(genotype %in% pair) %>%
       group_by(genotype) %>%
-      summarise(
-        n_sig     = sum(significant, na.rm = TRUE),
-        n_not_sig = sum(!significant, na.rm = TRUE),
-        .groups   = "drop"
-      ) %>%
+      summarise(n_sig     = sum(significant, na.rm = TRUE),
+                n_not_sig = sum(!significant, na.rm = TRUE),
+                .groups   = "drop") %>%
       arrange(match(genotype, pair))
-
-    # Build 2x2 contingency table: rows = DE/not-DE, cols = genotype
-    mat <- matrix(
-      c(counts$n_sig[1], counts$n_not_sig[1],
-        counts$n_sig[2], counts$n_not_sig[2]),
-      nrow = 2,
-      dimnames = list(
-        c("DE", "Not DE"),
-        c(g1, g2)
-      )
-    )
-
+    
+    mat  <- matrix(c(counts$n_sig[1], counts$n_not_sig[1],
+                     counts$n_sig[2], counts$n_not_sig[2]), nrow = 2)
     test <- fisher.test(mat)
-
-    tibble(
-      light_condition = light_cond,
-      genotype_1      = g1,
-      genotype_2      = g2,
-      n_sig_g1        = counts$n_sig[1],
-      n_sig_g2        = counts$n_sig[2],
-      odds_ratio      = round(test$estimate, 3),
-      p_value         = signif(test$p.value, 4),
-      significant     = test$p.value < 0.05
-    )
+    
+    tibble(light_condition = light_cond,
+           genotype_1      = g1,
+           genotype_2      = g2,
+           n_sig_g1        = counts$n_sig[1],
+           n_sig_g2        = counts$n_sig[2],
+           odds_ratio      = round(test$estimate, 3),
+           p_value         = signif(test$p.value, 4),
+           significant     = test$p.value < 0.05)
   })
-  results
 }
 
 fisher_results <- bind_rows(
@@ -145,23 +121,17 @@ fisher_results <- bind_rows(
 
 message("\nFisher's exact test results:")
 print(fisher_results)
-
 write_csv(fisher_results, file.path(table_dir, "01_fisher_results.csv"))
 message("Saved: tables/01_fisher_results.csv")
 
-# ── 3. Q2: Do genotypes differ in fold change magnitude? ─────────────────────
-# We compare the absolute log2FC values across genotypes using the
-# Kruskal-Wallis test (non-parametric equivalent of ANOVA).
-# Only significantly DE genes are included — we're asking whether the
-# STRENGTH of response differs, not just whether genes change.
+# ── 3. Q2: Kruskal-Wallis — fold change magnitude ────────────────────────────
 
-message("\n--- Q2: Kruskal-Wallis test — fold change magnitude ---")
+message("\n--- Q2: Kruskal-Wallis test ---")
 
 de_sig <- de_long %>%
   filter(significant, !is.na(log2fc)) %>%
   mutate(abs_log2fc = abs(log2fc))
 
-# Run Kruskal-Wallis separately for each light condition
 kruskal_results <- de_sig %>%
   group_by(light_condition) %>%
   summarise(
@@ -170,44 +140,36 @@ kruskal_results <- de_sig %>%
     kruskal_p    = kruskal.test(abs_log2fc ~ genotype)$p.value,
     .groups      = "drop"
   ) %>%
-  mutate(
-    kruskal_stat = round(kruskal_stat, 3),
-    kruskal_p    = signif(kruskal_p, 4),
-    significant  = kruskal_p < 0.05
-  )
+  mutate(kruskal_stat = round(kruskal_stat, 3),
+         kruskal_p    = signif(kruskal_p, 4),
+         significant  = kruskal_p < 0.05)
 
 message("\nKruskal-Wallis results:")
 print(kruskal_results)
-
 write_csv(kruskal_results, file.path(table_dir, "02_kruskal_results.csv"))
 message("Saved: tables/02_kruskal_results.csv")
 
-# ── 4. Post-hoc: Dunn's test for pairwise magnitude comparisons ───────────────
-# If Kruskal-Wallis is significant, we follow up with pairwise Wilcoxon tests
-# (with Bonferroni correction) to identify WHICH genotype pairs differ.
+# ── 4. Post-hoc: Pairwise Wilcoxon ───────────────────────────────────────────
 
-message("\n--- Post-hoc: Pairwise Wilcoxon tests (Bonferroni corrected) ---")
+message("\n--- Post-hoc: Pairwise Wilcoxon (Bonferroni corrected) ---")
 
 run_pairwise_wilcox <- function(data, light_cond) {
   df        <- data %>% filter(light_condition == light_cond)
   genotypes <- levels(df$genotype)
   pairs     <- combn(genotypes, 2, simplify = FALSE)
-
+  
   map_dfr(pairs, function(pair) {
-    g1   <- pair[1]; g2 <- pair[2]
-    v1   <- df %>% filter(genotype == g1) %>% pull(abs_log2fc)
-    v2   <- df %>% filter(genotype == g2) %>% pull(abs_log2fc)
+    g1 <- pair[1]; g2 <- pair[2]
+    v1 <- df %>% filter(genotype == g1) %>% pull(abs_log2fc)
+    v2 <- df %>% filter(genotype == g2) %>% pull(abs_log2fc)
     test <- wilcox.test(v1, v2)
-
-    tibble(
-      light_condition  = light_cond,
-      genotype_1       = g1,
-      genotype_2       = g2,
-      median_abs_lfc_1 = round(median(v1), 3),
-      median_abs_lfc_2 = round(median(v2), 3),
-      W_statistic      = test$statistic,
-      p_value          = signif(test$p.value, 4)
-    )
+    tibble(light_condition  = light_cond,
+           genotype_1       = g1,
+           genotype_2       = g2,
+           median_abs_lfc_1 = round(median(v1), 3),
+           median_abs_lfc_2 = round(median(v2), 3),
+           W_statistic      = test$statistic,
+           p_value          = signif(test$p.value, 4))
   })
 }
 
@@ -215,45 +177,34 @@ dunn_results <- bind_rows(
   run_pairwise_wilcox(de_sig, "Light"),
   run_pairwise_wilcox(de_sig, "Dark")
 ) %>%
-  # Apply Bonferroni correction within each light condition
   group_by(light_condition) %>%
   mutate(p_adj_bonferroni = signif(p.adjust(p_value, method = "bonferroni"), 4),
          significant      = p_adj_bonferroni < 0.05) %>%
   ungroup()
 
-message("\nPairwise Wilcoxon results (Bonferroni corrected):")
+message("\nPairwise Wilcoxon results:")
 print(dunn_results)
-
 write_csv(dunn_results, file.path(table_dir, "03_dunn_results.csv"))
 message("Saved: tables/03_dunn_results.csv")
 
-# ── 5. Q3: Do genotypes differ in up/down direction proportions? ──────────────
-# For each light condition, we test whether the proportion of up- vs
-# down-regulated genes differs between genotypes using a chi-square test
-# on a contingency table (genotype x direction).
+# ── 5. Q3: Chi-square — up/down direction ────────────────────────────────────
 
-message("\n--- Q3: Chi-square test — up/down direction proportions ---")
+message("\n--- Q3: Chi-square test ---")
 
 run_chisq <- function(data, light_cond) {
   df <- data %>%
     filter(light_condition == light_cond, significant, !is.na(direction))
-
-  # Build contingency table: rows = genotype, cols = direction
   ct <- df %>%
     count(genotype, direction) %>%
     pivot_wider(names_from = direction, values_from = n, values_fill = 0) %>%
     column_to_rownames("genotype") %>%
     as.matrix()
-
   test <- chisq.test(ct)
-
-  tibble(
-    light_condition = light_cond,
-    chi_sq_stat     = round(test$statistic, 3),
-    df              = test$parameter,
-    p_value         = signif(test$p.value, 4),
-    significant     = test$p.value < 0.05
-  )
+  tibble(light_condition = light_cond,
+         chi_sq_stat     = round(test$statistic, 3),
+         df              = test$parameter,
+         p_value         = signif(test$p.value, 4),
+         significant     = test$p.value < 0.05)
 }
 
 chisq_results <- bind_rows(
@@ -261,15 +212,13 @@ chisq_results <- bind_rows(
   run_chisq(de_long, "Dark")
 )
 
-message("\nChi-square test results:")
+message("\nChi-square results:")
 print(chisq_results)
-
 write_csv(chisq_results, file.path(table_dir, "04_chisq_results.csv"))
 message("Saved: tables/04_chisq_results.csv")
 
-# ── 6. Figure 5: Boxplots of fold change magnitude ───────────────────────────
-# Visualizes the Kruskal-Wallis result — how does the spread of |log2FC|
-# differ across genotypes within each light condition?
+# ── 6. Figure 5: Boxplots ─────────────────────────────────────────────────────
+# KW p-value placed in the facet strip label — clean and unobtrusive.
 
 message("\n--- Figure 5: Fold change magnitude boxplots ---")
 
@@ -279,75 +228,64 @@ p5 <- de_sig %>%
   geom_jitter(aes(color = genotype), width = 0.15, alpha = 0.05, size = 0.4) +
   facet_wrap(~ light_condition,
              labeller = labeller(light_condition = c(
-               Light = "Light Treatment",
-               Dark  = "Dark Treatment"
+               Light = "Light  (KW p = 2.91e-40)",
+               Dark  = "Dark  (KW p = 5.64e-16)"
              ))) +
-  coord_cartesian(ylim = c(0, 6)) +
+  coord_cartesian(ylim = c(0, 7)) +
   scale_fill_manual(values  = genotype_colors, guide = "none") +
   scale_color_manual(values = genotype_colors, guide = "none") +
-  # Add Kruskal-Wallis p-value as annotation
-  geom_text(
-    data = kruskal_results %>%
-      mutate(label = paste0("Kruskal-Wallis p = ", kruskal_p),
-             abs_log2fc = 5.7, genotype = factor("Col-0", levels = c("Col-0","WS","phyD"))),
-    aes(x = 1.5, y = abs_log2fc, label = label),
-    inherit.aes = FALSE,
-    size = 3, color = "grey30", fontface = "italic"
-  ) +
   labs(
     title    = "Magnitude of Gene Expression Changes in Spaceflight",
     subtitle = "Absolute log2 fold change | Significantly DE genes only (padj < 0.05)",
     x        = "Genotype",
     y        = "|Log2 Fold Change|",
-    caption  = "Data: NASA OSDR OSD-120 (CARA experiment)"
+    caption  = "KW = Kruskal-Wallis test | Data: NASA OSDR OSD-120 (CARA experiment)"
   ) +
-  theme_space
+  theme_space +
+  theme(
+    axis.text.x = element_text(
+      color = genotype_colors[c("Col-0", "WS", "phyD")],
+      face  = "bold"
+    ),
+    plot.margin = margin(t = 15, r = 10, b = 10, l = 10)
+  )
 
 ggsave(file.path(fig_dir, "05_log2fc_boxplots.png"), p5,
-       width = 9, height = 5, dpi = 300)
+       width = 9, height = 6, dpi = 300)
 message("Saved: figures/05_log2fc_boxplots.png")
 print(p5)
 
-# ── 7. Figure 6: DE gene overlap heatmap ─────────────────────────────────────
-# How many significantly DE genes are SHARED between groups?
-# This helps answer whether each genotype/condition activates a unique
-# or shared transcriptional response to spaceflight.
+# ── 7. Figure 6: Jaccard overlap heatmap ─────────────────────────────────────
 
 message("\n--- Figure 6: DE gene overlap heatmap ---")
 
-# Get the set of significant genes for each group
 sig_gene_sets <- de_long %>%
   filter(significant) %>%
   group_by(genotype, light_condition) %>%
   summarise(genes = list(unique(TAIR)), .groups = "drop") %>%
   mutate(group = paste(genotype, light_condition, sep = "\n"))
 
-# Compute pairwise Jaccard similarity: |intersection| / |union|
 groups <- sig_gene_sets$group
 n      <- length(groups)
 
 jaccard_mat <- matrix(NA, nrow = n, ncol = n,
                       dimnames = list(groups, groups))
-
 for (i in seq_len(n)) {
   for (j in seq_len(n)) {
-    set_i <- sig_gene_sets$genes[[i]]
-    set_j <- sig_gene_sets$genes[[j]]
-    intersection <- length(intersect(set_i, set_j))
-    union_size   <- length(union(set_i, set_j))
-    jaccard_mat[i, j] <- if (union_size > 0) intersection / union_size else 0
+    s_i  <- sig_gene_sets$genes[[i]]
+    s_j  <- sig_gene_sets$genes[[j]]
+    inter <- length(intersect(s_i, s_j))
+    uni   <- length(union(s_i, s_j))
+    jaccard_mat[i, j] <- if (uni > 0) inter / uni else 0
   }
 }
 
-# Convert to long format for ggplot
 jaccard_long <- as.data.frame(jaccard_mat) %>%
   rownames_to_column("group_1") %>%
   pivot_longer(-group_1, names_to = "group_2", values_to = "jaccard") %>%
-  mutate(
-    label = round(jaccard, 2),
-    group_1 = factor(group_1, levels = groups),
-    group_2 = factor(group_2, levels = groups)
-  )
+  mutate(label   = round(jaccard, 2),
+         group_1 = factor(group_1, levels = groups),
+         group_2 = factor(group_2, levels = groups))
 
 p6 <- jaccard_long %>%
   ggplot(aes(x = group_1, y = group_2, fill = jaccard)) +
@@ -364,31 +302,26 @@ p6 <- jaccard_long %>%
     caption  = "Data: NASA OSDR OSD-120 (CARA experiment)"
   ) +
   theme_space +
-  theme(
-    axis.text.x  = element_text(angle = 30, hjust = 1),
-    legend.position = "right"
-  )
+  theme(axis.text.x  = element_text(angle = 30, hjust = 1),
+        legend.position = "right")
 
 ggsave(file.path(fig_dir, "06_overlap_heatmap.png"), p6,
        width = 8, height = 7, dpi = 300)
 message("Saved: figures/06_overlap_heatmap.png")
 print(p6)
 
-# ── 8. Print combined results summary ────────────────────────────────────────
+# ── 8. Summary ────────────────────────────────────────────────────────────────
 
 message("\n========================================")
 message(" Statistical comparison summary")
 message("========================================")
-message("\nQ1 — Fisher's exact test (DE gene counts):")
+message("\nQ1 — Fisher's exact test:")
 print(fisher_results %>% select(light_condition, genotype_1, genotype_2,
-                                 n_sig_g1, n_sig_g2, p_value, significant))
-
-message("\nQ2 — Kruskal-Wallis (fold change magnitude):")
+                                n_sig_g1, n_sig_g2, p_value, significant))
+message("\nQ2 — Kruskal-Wallis:")
 print(kruskal_results)
-
-message("\nQ3 — Chi-square (up/down direction):")
+message("\nQ3 — Chi-square:")
 print(chisq_results)
-
 message("\n========================================")
 message(" Comparisons complete!")
 message(" Tables saved to: tables/")
