@@ -1,0 +1,7 @@
+light_condition,genotype_1,genotype_2,median_abs_lfc_1,median_abs_lfc_2,W_statistic,p_value,p_adj_bonferroni,significant
+Light,Col-0,WS,2.088,1.56,1568107,6.754e-12,2.026e-11,TRUE
+Light,Col-0,phyD,2.088,2.307,366739,0.002342,0.007026,TRUE
+Light,WS,phyD,1.56,2.307,1323287,7.521e-38,2.256e-37,TRUE
+Dark,Col-0,WS,3.446,6.552,1249,7.031e-4,0.002109,TRUE
+Dark,Col-0,phyD,3.446,2.03,19506,1.066e-5,3.198e-5,TRUE
+Dark,WS,phyD,6.552,2.03,19309,3.531e-14,1.059e-13,TRUE

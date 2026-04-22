@@ -67,27 +67,21 @@ contrasts_raw <- read_csv(
   data_path("GLDS-120_rna_seq_contrasts_GLbulkRNAseq.csv"),
   show_col_types = FALSE
 )
-message("  Loaded: ", nrow(contrasts_raw), " rows x ", ncol(contrasts_raw), " columns")
 
 message("Loading sample table...")
 samples_raw <- read_csv(
   data_path("GLDS-120_rna_seq_SampleTable_GLbulkRNAseq.csv"),
   show_col_types = FALSE
 )
-message("  Loaded: ", nrow(samples_raw), " rows x ", ncol(samples_raw), " columns")
 
 # ── 2. Identify column types ──────────────────────────────────────────────────
-# The DE file is wide: gene annotation columns first, then per-sample count
-# columns, then DE statistic columns (Log2fc_, P.value_, Adj.p.value_) for
-# each pairwise contrast. We detect each type automatically by prefix.
 
 message("\n--- Identifying column types ---")
 
-all_cols <- colnames(de_raw)
-
-gene_col   <- "TAIR"
-annot_cols <- c("TAIR", "SYMBOL", "GENENAME", "REFSEQ", "ENTREZID",
-                "STRING_id", "GOSLIM_IDS")
+all_cols    <- colnames(de_raw)
+gene_col    <- "TAIR"
+annot_cols  <- c("TAIR", "SYMBOL", "GENENAME", "REFSEQ", "ENTREZID",
+                 "STRING_id", "GOSLIM_IDS")
 
 log2fc_cols <- all_cols[str_detect(all_cols, "^Log2fc_")]
 pval_cols   <- all_cols[str_detect(all_cols, "^P\\.value_")]
@@ -96,54 +90,64 @@ padj_cols   <- all_cols[str_detect(all_cols, "^Adj\\.p\\.value_")]
 message("Log2FC columns found: ",      length(log2fc_cols))
 message("P-value columns found: ",     length(pval_cols))
 message("Adj p-value columns found: ", length(padj_cols))
-message("\nExample Log2FC column:     ", log2fc_cols[1])
-message("Example P-value column:     ", pval_cols[1])
-message("Example Adj p-value column: ", padj_cols[1])
 
 # ── 3. Identify the 6 focal contrasts ────────────────────────────────────────
-# The file contains ALL pairwise comparisons among groups. We only want the
-# 6 biologically relevant ones for our research question:
-#   Spaceflight (FLT) vs Ground Control (GC), within each genotype x light.
+# The file contains ALL pairwise comparisons. We need exactly 6:
+#   Space Flight vs Ground Control, within each genotype x light condition.
 #
-# These contrasts contain BOTH "Space Flight" AND "Ground Control", and
-# the same genotype on both sides.
+# Three filtering steps:
+#   Step A — keep only contrasts involving both Space Flight and Ground Control
+#   Step B — keep only within-genotype contrasts (same genotype on both sides)
+#   Step C — keep only contrasts where Space Flight is on the LEFT (numerator)
+#             so that: positive log2fc = up-regulated in spaceflight
+#                      negative log2fc = down-regulated in spaceflight
 
 message("\n--- Identifying focal contrasts (FLT vs GC only) ---")
 
-# Extract the contrast ID from a Log2fc column by stripping the prefix.
-# The contrast ID retains its outer parentheses, e.g.:
-#   "(Col-0 & Ground Control & Dark Treatment)v(Col-0 & Space Flight & Dark Treatment)"
 contrast_id_from_col <- function(col) str_remove(col, "^Log2fc_")
 
-# Step 1: keep only contrasts comparing Space Flight to Ground Control
-focal_log2fc_cols <- log2fc_cols[
+# Helper: split contrast into left and right groups around ")v("
+split_contrast <- function(col_name) {
+  contrast <- str_remove(col_name, "^Log2fc_\\(")
+  parts    <- str_split(contrast, fixed(")v("))[[1]]
+  if (length(parts) != 2) return(list(left = NA, right = NA))
+  list(
+    left  = parts[1],
+    right = str_remove(parts[2], "\\)$")
+  )
+}
+
+# Step A: both Space Flight and Ground Control must appear
+focal <- log2fc_cols[
   str_detect(log2fc_cols, "Space Flight") &
     str_detect(log2fc_cols, "Ground Control")
 ]
 
-# Step 2: keep only within-genotype contrasts (same genotype on both sides)
+# Step B: same genotype on both sides
 is_within_genotype <- function(col_name) {
-  contrast <- str_remove(col_name, "^Log2fc_\\(")
-  parts    <- str_split(contrast, fixed(")v("))[[1]]
-  if (length(parts) != 2) return(FALSE)
-  left       <- parts[1]
-  right      <- str_remove(parts[2], "\\)$")
-  geno_left  <- str_trim(str_extract(left,  "^[^&]+"))
-  geno_right <- str_trim(str_extract(right, "^[^&]+"))
-  geno_left == geno_right
+  parts      <- split_contrast(col_name)
+  geno_left  <- str_trim(str_extract(parts$left,  "^[^&]+"))
+  geno_right <- str_trim(str_extract(parts$right, "^[^&]+"))
+  !is.na(geno_left) && geno_left == geno_right
 }
+focal <- focal[sapply(focal, is_within_genotype)]
 
-focal_log2fc_cols <- focal_log2fc_cols[sapply(focal_log2fc_cols, is_within_genotype)]
+# Step C: Space Flight must be on the LEFT (numerator) so positive log2fc
+# means up-regulated in spaceflight. This also eliminates the duplicate
+# mirror contrasts that otherwise produce perfectly symmetric 50/50 splits.
+is_spaceflight_left <- function(col_name) {
+  parts <- split_contrast(col_name)
+  str_detect(parts$left, "Space Flight")
+}
+focal_log2fc_cols <- focal[sapply(focal, is_spaceflight_left)]
 
 message("Focal contrasts identified: ", length(focal_log2fc_cols))
-message("Contrast names:")
+message("(Should be exactly 6 — one per genotype x light condition)")
 for (col in focal_log2fc_cols) message("  ", contrast_id_from_col(col))
 
 # Build matching p-value and adj p-value column names.
-# The contrast ID includes outer parens, e.g. "(Col-0 & ...)v(Col-0 & ...)"
-# The p-value columns are named: P.value_(Col-0 & ...)v(Col-0 & ...)
-# So we strip the outer parens from the contrast ID before concatenating.
-
+# contrast ID has outer parens, e.g. "(FLT group)v(GC group)"
+# p-value columns are named P.value_(FLT group)v(GC group) — no double parens
 focal_contrast_ids       <- contrast_id_from_col(focal_log2fc_cols)
 focal_contrast_ids_clean <- str_remove(focal_contrast_ids, "^\\(") %>%
   str_remove("\\)$")
@@ -151,14 +155,13 @@ focal_contrast_ids_clean <- str_remove(focal_contrast_ids, "^\\(") %>%
 focal_pval_cols <- paste0("P.value_(", focal_contrast_ids_clean, ")")
 focal_padj_cols <- paste0("Adj.p.value_(", focal_contrast_ids_clean, ")")
 
-# Verify columns exist in the data
 focal_pval_cols <- focal_pval_cols[focal_pval_cols %in% all_cols]
 focal_padj_cols <- focal_padj_cols[focal_padj_cols %in% all_cols]
 
-message("\nMatching p-value columns found: ",    length(focal_pval_cols))
-message("Matching adj p-value columns found: ", length(focal_padj_cols))
+message("\nMatching p-value columns:     ", length(focal_pval_cols))
+message("Matching adj p-value columns: ", length(focal_padj_cols))
 
-# ── 4. Reshape focal contrasts to long format ─────────────────────────────────
+# ── 4. Reshape to long (tidy) format ─────────────────────────────────────────
 
 message("\n--- Reshaping to long (tidy) format ---")
 
@@ -180,11 +183,11 @@ if (length(focal_pval_cols) > 0) {
       names_to  = "col_pval",
       values_to = "pvalue"
     ) %>%
-    mutate(contrast = str_remove(col_pval, "^P\\.value_\\(") %>% str_remove("\\)$")) %>%
-    mutate(contrast = paste0("(", contrast, ")")) %>%
+    mutate(contrast = str_remove(col_pval, "^P\\.value_\\(") %>%
+             str_remove("\\)$") %>%
+             { paste0("(", ., ")") }) %>%
     select(all_of(gene_col), contrast, pvalue)
 } else {
-  message("[WARN] No matching p-value columns found — pvalue will be NA")
   de_pval <- NULL
 }
 
@@ -196,11 +199,11 @@ if (length(focal_padj_cols) > 0) {
       names_to  = "col_padj",
       values_to = "padj"
     ) %>%
-    mutate(contrast = str_remove(col_padj, "^Adj\\.p\\.value_\\(") %>% str_remove("\\)$")) %>%
-    mutate(contrast = paste0("(", contrast, ")")) %>%
+    mutate(contrast = str_remove(col_padj, "^Adj\\.p\\.value_\\(") %>%
+             str_remove("\\)$") %>%
+             { paste0("(", ., ")") }) %>%
     select(all_of(gene_col), contrast, padj)
 } else {
-  message("[WARN] No matching adj p-value columns found — padj will be NA")
   de_padj <- NULL
 }
 
@@ -208,18 +211,24 @@ de_long <- de_log2fc
 if (!is.null(de_pval)) de_long <- left_join(de_long, de_pval, by = c(gene_col, "contrast"))
 if (!is.null(de_padj)) de_long <- left_join(de_long, de_padj, by = c(gene_col, "contrast"))
 
-message("Long-format table: ", nrow(de_long), " rows x ", ncol(de_long), " columns")
+message("Long-format rows: ", nrow(de_long),
+        " (expected ~", 24725 * 6, " = 24725 genes x 6 contrasts)")
 
 # ── 5. Parse genotype and light condition ─────────────────────────────────────
-# Actual genotype names found in the contrast strings:
-#   "Col-0"                 → Col-0 (wild-type Columbia ecotype)
-#   "Col-0 PhyD"            → phyD  (phytochrome D loss-of-function mutant)
-#   "Wassilewskija ecotype" → WS    (wild-type Wassilewskija ecotype)
+# Genotype names in contrast strings:
+#   "Col-0 PhyD"            → phyD
+#   "Wassilewskija ecotype" → WS
+#   "Col-0"                 → Col-0
+#
+# Since Space Flight is now always on the LEFT side:
+#   positive log2fc = gene is MORE expressed in spaceflight (up-regulated)
+#   negative log2fc = gene is LESS expressed in spaceflight (down-regulated)
 
 message("\n--- Parsing genotype and light condition ---")
 
 de_long <- de_long %>%
   mutate(
+    # Left side of contrast = Space Flight group; extract genotype from it
     contrast_left = str_extract(contrast, "^[^&]+"),
     
     genotype = case_when(
@@ -235,6 +244,7 @@ de_long <- de_long %>%
       TRUE                                   ~ "Unknown"
     ),
     
+    # positive log2fc = up in spaceflight (Space Flight is numerator)
     direction = case_when(
       is.na(log2fc) ~ NA_character_,
       log2fc > 0    ~ "Up in spaceflight",
@@ -250,6 +260,11 @@ message("\nGenotypes detected:")
 print(table(de_long$genotype))
 message("\nLight conditions detected:")
 print(table(de_long$light_condition))
+
+# Sanity check: each TAIR gene should appear exactly 6 times (once per contrast)
+n_per_gene <- de_long %>% count(TAIR) %>% pull(n)
+message("\nRows per gene — should all be 6:")
+print(table(n_per_gene))
 
 # ── 6. Clean sample table ─────────────────────────────────────────────────────
 
@@ -268,11 +283,13 @@ summary_table <- de_long %>%
     total_genes     = n_distinct(TAIR),
     n_significant   = sum(significant, na.rm = TRUE),
     pct_significant = round(mean(significant, na.rm = TRUE) * 100, 1),
+    n_up            = sum(significant & direction == "Up in spaceflight",   na.rm = TRUE),
+    n_down          = sum(significant & direction == "Down in spaceflight",  na.rm = TRUE),
     median_log2fc   = round(median(log2fc, na.rm = TRUE), 3),
     .groups         = "drop"
   )
 
-message("\nSignificant DE genes (padj < 0.05) per group:")
+message("\nSummary (significant DE genes, padj < 0.05):")
 print(summary_table)
 
 # ── 8. Save outputs ───────────────────────────────────────────────────────────

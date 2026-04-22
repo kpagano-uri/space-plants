@@ -1,0 +1,3 @@
+light_condition,kruskal_stat,kruskal_df,kruskal_p,significant
+Light,182.071,2,2.909e-40,TRUE
+Dark,70.222,2,5.643e-16,TRUE

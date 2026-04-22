@@ -1,0 +1,7 @@
+light_condition,genotype_1,genotype_2,n_sig_g1,n_sig_g2,odds_ratio,p_value,significant
+Light,Col-0,WS,777,3488,0.215,0,TRUE
+Light,Col-0,phyD,777,1030,0.752,2.316e-9,TRUE
+Light,WS,phyD,3488,1030,3.504,5.582e-318,TRUE
+Dark,Col-0,WS,69,56,1.233,0.2825,FALSE
+Dark,Col-0,phyD,69,425,0.16,3.77e-64,TRUE
+Dark,WS,phyD,56,425,0.13,7.327999999999999e-72,TRUE

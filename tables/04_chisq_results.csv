@@ -1,0 +1,3 @@
+light_condition,chi_sq_stat,df,p_value,significant
+Light,87.24,2,1.138e-19,TRUE
+Dark,14.2,2,8.25e-4,TRUE
