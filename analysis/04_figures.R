@@ -12,13 +12,13 @@
 #   Combine the best figures from exploratory and comparison scripts into
 #   two clean multi-panel figures suitable for the paper.
 #
-#   Figure A (figures/FigureA_overview.png):
+#   Figure 1 (figures/FigureA_overview.png):
 #     Panel A — DE gene counts (bar chart)
 #     Panel B — Log2FC distributions (density)
 #     Panel C — Volcano grid
 #     Panel D — Up/down direction proportions
 #
-#   Figure B (figures/FigureB_statistics.png):
+#   Figure 2 (figures/FigureB_statistics.png):
 #     Panel A — Fold change magnitude boxplots
 #     Panel B — Jaccard overlap heatmap
 #
@@ -284,9 +284,9 @@ pF <- jaccard_long %>%
         axis.text.y     = element_text(size = 9),
         legend.position = "right")
 
-# ── 3. Stitch Figure A ────────────────────────────────────────────────────────
+# ── 3. Stitch Figure 1 ────────────────────────────────────────────────────────
 
-message("Stitching Figure A...")
+message("Stitching Figure 1...")
 
 figA <- (pA | pB) / (pC | pD) +
   plot_annotation(
@@ -300,13 +300,13 @@ figA <- (pA | pB) / (pC | pD) +
     )
   )
 
-ggsave(file.path(fig_dir, "FigureA_overview.png"), figA,
+ggsave(file.path(fig_dir, "Figure1_overview.png"), figA,
        width = 14, height = 12, dpi = 300)
-message("Saved: figures/FigureA_overview.png")
+message("Saved: figures/Figure1_overview.png")
 
-# ── 4. Stitch Figure B ────────────────────────────────────────────────────────
+# ── 4. Stitch Figure 2 ────────────────────────────────────────────────────────
 
-message("Stitching Figure B...")
+message("Stitching Figure 2...")
 
 figB <- (pE | pF) +
   plot_annotation(
@@ -320,12 +320,12 @@ figB <- (pE | pF) +
     )
   )
 
-ggsave(file.path(fig_dir, "FigureB_statistics.png"), figB,
+ggsave(file.path(fig_dir, "Figure2_statistics.png"), figB,
        width = 14, height = 7, dpi = 300)
-message("Saved: figures/FigureB_statistics.png")
+message("Saved: figures/Figure2_statistics.png")
 
 message("\n========================================")
 message(" Figure assembly complete!")
-message(" figures/FigureA_overview.png")
-message(" figures/FigureB_statistics.png")
+message(" figures/Figure1_overview.png")
+message(" figures/Figure2_statistics.png")
 message("========================================")

@@ -29,6 +29,7 @@
 # =============================================================================
 
 library(tidyverse)
+setwd("C:/Users/Kathr/Documents/space-plants")
 
 # ── 0. Locate data files relative to project root ────────────────────────────
 
