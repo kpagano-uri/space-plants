@@ -44,13 +44,13 @@ Under dark conditions, this pattern reversed: Col-0 showed the highest median ab
 
 Among significantly DE genes, the proportion of genes up- versus down-regulated in spaceflight differed markedly between light conditions (Figure 1D). Under dark conditions, the majority of DE genes were up-regulated in spaceflight across all genotypes (Col-0: 75%, WS: 84%, phyD: 62%). Under light conditions, this pattern shifted: Col-0 showed more down-regulation (56% down), while WS and phyD showed more up-regulation (60% and 64%, respectively). Chi-square tests confirmed that up/down proportions differed significantly across genotypes in both light (χ² = 87.2, df = 2, p = 1.14e-19) and dark (χ² = 14.2, df = 2, p = 8.25e-4) conditions.
 
-![**Figure 1.** Overview of transcriptional responses to spaceflight across *Arabidopsis* genotypes and light conditions. (A) Number of significantly DE genes per group. (B) Distribution of log2 fold changes across all genes. (C) Volcano plots for all six contrasts. (D) Proportion of significantly DE genes up- versus down-regulated in spaceflight.](figures/Figure1_overview.png)
+![**Figure 1.** Overview of transcriptional responses to spaceflight across *Arabidopsis* genotypes and light conditions. (A) Number of significantly DE genes per group. (B) Distribution of log2 fold changes across all genes. (C) Volcano plots for all six contrasts. (D) Proportion of significantly DE genes up- versus down-regulated in spaceflight.](../figures/Figure1_overview.png)
 
 ### DE gene sets show minimal overlap across groups
 
 Jaccard similarity analysis revealed that the sets of significantly DE genes were largely distinct across groups, with pairwise similarities ranging from 0.03 to 0.17 (Figure 2B). The highest similarity was observed between phyD Light and phyD Dark (Jaccard = 0.17), suggesting that the phyD genotype maintains a more consistent core response across light conditions than the other genotypes. Overall, the low overlap indicates that each genotype and light condition activates a largely unique transcriptional program in response to spaceflight.
 
-![**Figure 2.** Statistical comparisons of spaceflight responses. (A) Absolute log2 fold change magnitude among significantly DE genes; strip labels indicate Kruskal-Wallis p-values. (B) Jaccard similarity of DE gene sets between all group pairs.](figures/Figure2_statistics.png)
+![**Figure 2.** Statistical comparisons of spaceflight responses. (A) Absolute log2 fold change magnitude among significantly DE genes; strip labels indicate Kruskal-Wallis p-values. (B) Jaccard similarity of DE gene sets between all group pairs.](../figures/Figure2_statistics.png)
 
 ---
 
