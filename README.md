@@ -1,7 +1,7 @@
 # Plants in Space
 ## Transcriptional Responses of *Arabidopsis thaliana* to Spaceflight
 
-**Author:** Kathryn Pagano  
+**Author:** Kathryn E. Pagano  
 **Course:** BIO539/DSP539  
 **Date:** April 2026  
 
