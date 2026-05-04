@@ -1,6 +1,6 @@
 # Statement on AI Tool Usage
 
-## Project: Plants in Space — Transcriptional Responses of *Arabidopsis thaliana* to Spaceflight
+## Project: Plants in Space: Transcriptional Responses of *Arabidopsis thaliana* to Spaceflight
 
 **Author:** Kathryn E. Pagano  
 **Course:** BIO539/DSP539 
