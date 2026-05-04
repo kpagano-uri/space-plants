@@ -1,8 +1,8 @@
 # Genotype- and Light-Dependent Transcriptional Responses of *Arabidopsis thaliana* to Spaceflight
 
-**Kate Pagano**  
-University of Rhode Island  
-April 2026
+**Author:** Kathryn E. Pagano  
+**Course:** BIO539/DSP539   
+**Date:** April 2026 
 
 ---
 
